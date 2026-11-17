@@ -69,8 +69,8 @@ For local frontend development (`npm run dev`) the backend URL can also be set a
 ### With Docker only
 
 ```bash
-docker compose --profile test run --rm backend-tests    # 46 backend tests, real PostgreSQL
-docker compose --profile test run --rm frontend-tests   # 24 frontend tests
+docker compose --profile test run --rm backend-tests    # 56 backend tests, real PostgreSQL
+docker compose --profile test run --rm frontend-tests   # 36 frontend tests
 ```
 
 `backend-tests` starts the `db` service if needed. Each test class creates its own throw-away
@@ -95,17 +95,21 @@ npm test
 
 - **Concurrency** (`ConcurrencyTests`): 200 simultaneous applications for 10 seats create exactly
   10 holds. Also covered: one student applying 20 times at once gets one hold, 15 simultaneous
-  confirms count once, and **two app instances with separate connection pools sharing one
+  confirms count once, confirm and cancel racing on one hold leave consistent counts, and **two app instances with separate connection pools sharing one
   database** never over-book. These tests fail if the class row lock is removed (checked by
   deleting `FOR UPDATE` and re-running).
 - **Expiry** (`ExpiryTests`): a manual clock moves past the hold time. The seat frees itself with
-  no API call, confirming then fails with `HOLD_EXPIRED`, and the student can apply again.
+  no API call, confirming then fails with `HOLD_EXPIRED`, the full duration is honoured to the
+  millisecond, and the student can apply again.
 - **Rules and contract** (`HoldApiTests`, `ClassApiTests`): field names and status codes,
   ownership (403), one active application per student per class, idempotent confirm and cancel,
-  and 4xx (never 500) for malformed JSON, wrong types, bad student IDs and unknown IDs.
-- **Frontend**: the countdown flips to `EXPIRED` and disables the pay button with no reload; seat
-  counts refresh on their own; the student ID survives a reload; network failures, proxy errors
-  and API error codes become plain Bengali messages.
+  and 4xx (never 500) for malformed JSON, wrong types, NUL bytes or broken Unicode, bad student
+  IDs, and unknown or malformed IDs.
+- **Frontend**: the countdown flips to `EXPIRED` and disables the pay button with no reload, and
+  follows the server clock. Seat counts refresh on their own, even when the server is slow. The
+  student ID survives a reload. Payment is sent only once on a double click. Network failures,
+  proxy errors, unexpected responses, broken links and API error codes become plain Bengali
+  messages, never a blank page.
 
 ## Two backend processes (bonus)
 
@@ -150,7 +154,7 @@ stable `code`:
 | 400 | `VALIDATION_FAILED` (with per-field `errors`), `INVALID_REQUEST` (malformed JSON or wrong types), `MISSING_STUDENT_ID`, `INVALID_STUDENT_ID` |
 | 403 | `NOT_HOLD_OWNER` |
 | 404 | `CLASS_NOT_FOUND`, `HOLD_NOT_FOUND` |
-| 409 | `NO_SEATS_AVAILABLE`, `ALREADY_APPLIED` (with the existing `holdId`), `CLASS_NAME_TAKEN`, `HOLD_EXPIRED`, `HOLD_CANCELLED`, `HOLD_ALREADY_CONFIRMED` |
+| 409 | `NO_SEATS_AVAILABLE`, `ALREADY_APPLIED` (with the existing `holdId`), `HOLD_EXPIRED`, `HOLD_CANCELLED`, `HOLD_ALREADY_CONFIRMED` |
 | 503 | `SERVICE_UNAVAILABLE` (database busy or unreachable; has `Retry-After`) |
 
 ## Project layout

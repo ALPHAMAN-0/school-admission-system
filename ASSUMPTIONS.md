@@ -4,11 +4,13 @@ Where the brief left something open, this is what I chose and why.
 
 ## Classes
 
-- **Each shift is its own class** with its own seats, as the brief says. Class names must be
-  unique, ignoring case and extra spaces, so "class 6 -  morning shift" duplicates
-  "Class 6 - Morning Shift" and returns `409`. Two classes with the same name would confuse
-  guardians.
-- **Limits:** a name has 1-100 characters and `totalSeats` is 1-10000. Anything else is a `400`.
+- **Each shift is its own class** with its own seats, as the brief says. Names do **not** have
+  to be unique, because the brief doesn't require it. Creating "Class 6 - Morning Shift" twice
+  gives two classes with different IDs, so a repeated run of an automated test always gets `201`.
+  Extra spaces in a name are tidied ("  Class  6 " becomes "Class 6").
+- **Limits:** a name has 1-100 characters, with no control characters (e.g. NUL) or broken
+  Unicode. `totalSeats` is a whole number of at least 1 (up to the 32-bit integer limit).
+  Anything else is a `400`.
 - **No admin login.** The brief says no login; anyone using the UI can create classes. A real
   deployment would protect the admin screen.
 
@@ -26,9 +28,12 @@ Where the brief left something open, this is what I chose and why.
   counts as free and the hold reads as `EXPIRED`. This is computed on every read, so nothing has
   to run for the seat to come back. A background sweeper (every 5 s) also rewrites such rows to
   `EXPIRED` to keep the stored data tidy.
-- `expiresAt` = creation time rounded down to the second + `HOLD_DURATION_SECONDS`, matching the
-  `2026-11-01T04:10:00Z` format in the brief. Times come from the API server clock in UTC. With
-  several backend processes the clocks are assumed to be in sync (same host in compose).
+- `expiresAt` = creation time **rounded up** to the next whole second + `HOLD_DURATION_SECONDS`.
+  The hold never lasts less than the configured time, and the value prints exactly like the
+  brief's `2026-11-01T04:10:00Z`. Times come from the API server clock in UTC. With several
+  backend processes the clocks are assumed to be in sync (same host in compose). The UI follows
+  the server clock (from the HTTP `Date` header), so a wrong device clock does not change when a
+  hold looks expired.
 - **One active application per student per class:** `HELD` or `CONFIRMED` blocks a new
   application (`409 ALREADY_APPLIED`, which includes the existing `holdId`). After the hold
   expires or is cancelled, the student may apply again. Different classes are independent.
@@ -37,7 +42,9 @@ Where the brief left something open, this is what I chose and why.
   same body and changes nothing, so a double click or retry is safe.
 - **Cancel (`DELETE`):** only the owner; `HELD` becomes `CANCELLED` and the seat is free again.
   Repeating it returns `204` (idempotent). A `CONFIRMED` admission cannot be cancelled (`409`),
-  because the fee is paid and refunds are out of scope. An expired hold returns `409`.
+  because the fee is paid and refunds are out of scope. Cancelling a hold that has already
+  expired returns `204` too, since it is already inactive and its seat free; its status stays
+  `EXPIRED`.
 - `GET /holds/{holdId}` needs no student header because the brief lists none. Hold IDs carry 96
   random bits, so they cannot be guessed, and this endpoint does not return the student number.
 - **Payment** is simulated: pressing the pay button is a successful payment.
@@ -80,7 +87,11 @@ Where the brief left something open, this is what I chose and why.
   from `API_BASE_URL` on start, so the URL can change without rebuilding. `VITE_API_BASE_URL`
   also works at build time.
 - CORS allows any origin by default because the API uses no cookies or credentials. It can be
-  restricted with `CORS_ALLOWED_ORIGINS`.
+  restricted with `CORS_ALLOWED_ORIGINS`. The frontend's Content-Security-Policy only lets the
+  page call its own origin and the configured backend origin.
+- **No rate limiting.** An automated concurrency test sends many requests at once from one
+  machine. A limiter would answer `429` where the brief expects `409`. A real deployment would
+  add per-IP limits at the proxy.
 
 ## Known limitation
 
