@@ -1,5 +1,7 @@
 using System.Net.Sockets;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 using SchoolAdmission.Api.Data;
 
@@ -33,6 +35,10 @@ public static class DatabaseInitializer
                     await db.Database.ExecuteSqlAsync($"SELECT pg_advisory_lock({MigrationLockKey})", cancellationToken);
                     try
                     {
+                        // Create the history table up front so a brand-new database does not log a
+                        // misleading "relation does not exist" error during the first migration.
+                        var historyScript = db.GetService<IHistoryRepository>().GetCreateIfNotExistsScript();
+                        await db.Database.ExecuteSqlRawAsync(historyScript, cancellationToken);
                         await db.Database.MigrateAsync(cancellationToken);
                     }
                     finally
