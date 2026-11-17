@@ -82,12 +82,6 @@ public static class Errors
         "Application not found",
         $"No application exists with id '{Truncate(holdId)}'.");
 
-    public static ApiError DuplicateClassName(string name) => new(
-        StatusCodes.Status409Conflict,
-        "CLASS_NAME_TAKEN",
-        "Class already exists",
-        $"A class named '{name}' already exists.");
-
     public static ApiError NoSeatsAvailable() => new(
         StatusCodes.Status409Conflict,
         "NO_SEATS_AVAILABLE",
@@ -137,5 +131,10 @@ public static class Errors
         "Admission already confirmed",
         "The admission fee is already paid, so this application can no longer be cancelled.");
 
-    private static string Truncate(string value) => value.Length <= 40 ? value : value[..40] + "...";
+    /// <summary>Echo at most 40 printable characters of an ID back to the client.</summary>
+    private static string Truncate(string value)
+    {
+        var printable = new string(value.Where(c => !char.IsControl(c) && !char.IsSurrogate(c)).Take(40).ToArray());
+        return value.Length <= 40 ? printable : printable + "...";
+    }
 }

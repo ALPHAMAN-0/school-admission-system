@@ -106,11 +106,6 @@ namespace SchoolAdmission.Api.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("name");
 
-                    b.Property<string>("NormalizedName")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("normalized_name");
-
                     b.Property<int>("TotalSeats")
                         .HasColumnType("integer")
                         .HasColumnName("total_seats");
@@ -120,10 +115,6 @@ namespace SchoolAdmission.Api.Data.Migrations
 
                     b.HasIndex("CreatedAt")
                         .HasDatabaseName("ix_classes_created_at");
-
-                    b.HasIndex("NormalizedName")
-                        .IsUnique()
-                        .HasDatabaseName("ux_classes_normalized_name");
 
                     b.ToTable("classes", null, t =>
                         {

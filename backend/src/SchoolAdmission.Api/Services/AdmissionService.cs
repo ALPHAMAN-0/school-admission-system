@@ -29,15 +29,19 @@ public sealed class AdmissionService(AdmissionDbContext db, TimeProvider time, I
         {
             errors["name"] = [$"Class name must be at most {SchoolClass.MaxNameLength} characters."];
         }
+        else if (!SchoolClass.IsStorableText(name))
+        {
+            errors["name"] = ["Class name must not contain control characters or invalid Unicode."];
+        }
 
         if (request?.TotalSeats is not { } totalSeats)
         {
             errors["totalSeats"] = ["totalSeats is required."];
             totalSeats = 0;
         }
-        else if (totalSeats is < 1 or > SchoolClass.MaxTotalSeats)
+        else if (totalSeats < 1)
         {
-            errors["totalSeats"] = [$"totalSeats must be a whole number between 1 and {SchoolClass.MaxTotalSeats}."];
+            errors["totalSeats"] = ["totalSeats must be a whole number of at least 1."];
         }
 
         if (errors.Count > 0)
@@ -45,31 +49,15 @@ public sealed class AdmissionService(AdmissionDbContext db, TimeProvider time, I
             return Errors.Validation(errors);
         }
 
-        var normalizedName = SchoolClass.NormalizeName(name);
-        if (await db.Classes.AnyAsync(c => c.NormalizedName == normalizedName, cancellationToken))
-        {
-            return Errors.DuplicateClassName(name);
-        }
-
         var schoolClass = new SchoolClass
         {
             Id = IdGenerator.NewClassId(),
             Name = name,
-            NormalizedName = normalizedName,
             TotalSeats = totalSeats,
             CreatedAt = time.GetUtcNow(),
         };
         db.Classes.Add(schoolClass);
-
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
-        {
-            // Two admins created the same name at the same moment.
-            return Errors.DuplicateClassName(name);
-        }
+        await db.SaveChangesAsync(cancellationToken);
 
         return new ClassResponse(schoolClass.Id, schoolClass.Name, schoolClass.TotalSeats, 0, 0, schoolClass.TotalSeats);
     }
@@ -154,7 +142,9 @@ public sealed class AdmissionService(AdmissionDbContext db, TimeProvider time, I
             ClassId = classId,
             StudentId = studentId,
             CreatedAt = now,
-            ExpiresAt = TruncateToSeconds(now) + options.Value.HoldDuration,
+            // Rounded UP to a whole second so the hold never lasts less than HOLD_DURATION_SECONDS
+            // and expiresAt prints exactly (e.g. 2026-11-01T04:10:00Z).
+            ExpiresAt = CeilingToSeconds(now) + options.Value.HoldDuration,
         };
         db.Holds.Add(hold);
         await db.SaveChangesAsync(cancellationToken);
@@ -271,10 +261,12 @@ public sealed class AdmissionService(AdmissionDbContext db, TimeProvider time, I
                 return Errors.HoldAlreadyConfirmed();
 
             case HoldStatus.Expired:
+                // The application is already inactive and its seat already free, which is what the
+                // caller wanted: succeed, but keep the true status (EXPIRED) on record.
                 hold.MarkExpired();
                 await db.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
-                return Errors.HoldExpired(hold.ExpiresAt);
+                return hold.Id;
         }
 
         hold.Cancel(now);
@@ -335,8 +327,11 @@ public sealed class AdmissionService(AdmissionDbContext db, TimeProvider time, I
     private static HoldConfirmedResponse ToConfirmedResponse(AdmissionHold hold) =>
         new(hold.Id, HoldStatus.Confirmed.ToApiValue(), hold.ClassId, hold.ConfirmedAt);
 
-    private static DateTimeOffset TruncateToSeconds(DateTimeOffset value) =>
-        new(value.Ticks - (value.Ticks % TimeSpan.TicksPerSecond), value.Offset);
+    private static DateTimeOffset CeilingToSeconds(DateTimeOffset value)
+    {
+        var remainder = value.Ticks % TimeSpan.TicksPerSecond;
+        return remainder == 0 ? value : new DateTimeOffset(value.Ticks - remainder + TimeSpan.TicksPerSecond, value.Offset);
+    }
 
     private sealed record SeatCountRow(string Id, string Name, int TotalSeats, DateTimeOffset CreatedAt, int HeldSeats, int ConfirmedSeats);
 

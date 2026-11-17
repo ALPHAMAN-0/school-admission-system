@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -60,6 +61,13 @@ internal sealed class ApiExceptionHandler(
             "Invalid request",
             "The request could not be read. Send a valid JSON body with the expected field types."),
 
+        // Safety net behind input validation: text the database cannot store is the client's fault.
+        _ when IsUnstorableText(exception) => new ApiError(
+            StatusCodes.Status400BadRequest,
+            "INVALID_REQUEST",
+            "Invalid request",
+            "The request contains characters that cannot be stored (for example a NUL byte)."),
+
         DbUpdateException { InnerException: PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } } => new ApiError(
             StatusCodes.Status409Conflict,
             "CONFLICT",
@@ -78,6 +86,20 @@ internal sealed class ApiExceptionHandler(
             "Unexpected error",
             "Something went wrong on the server. Please try again."),
     };
+
+    private static bool IsUnstorableText(Exception? exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is EncoderFallbackException
+                || current is PostgresException { SqlState: PostgresErrorCodes.CharacterNotInRepertoire or PostgresErrorCodes.UntranslatableCharacter })
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static bool IsTransientDatabaseError(Exception? exception)
     {

@@ -7,14 +7,10 @@ namespace SchoolAdmission.Api.Domain;
 public sealed class SchoolClass
 {
     public const int MaxNameLength = 100;
-    public const int MaxTotalSeats = 10_000;
 
     public required string Id { get; init; }
 
     public required string Name { get; init; }
-
-    /// <summary>Upper-cased, whitespace-collapsed name used for the uniqueness check.</summary>
-    public required string NormalizedName { get; init; }
 
     public required int TotalSeats { get; init; }
 
@@ -22,9 +18,31 @@ public sealed class SchoolClass
 
     public List<AdmissionHold> Holds { get; } = [];
 
-    /// <summary>Trims and collapses inner whitespace so "Class  6 " and "Class 6" are the same name.</summary>
+    /// <summary>Trims and collapses inner whitespace: "  Class  6 " becomes "Class 6".</summary>
     public static string CleanName(string name) =>
         string.Join(' ', name.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
-    public static string NormalizeName(string name) => CleanName(name).ToUpperInvariant();
+    /// <summary>
+    /// False for text PostgreSQL cannot store or that makes no sense in a name: control characters
+    /// (including NUL) and broken UTF-16 (unpaired surrogates).
+    /// </summary>
+    public static bool IsStorableText(string value)
+    {
+        for (var i = 0; i < value.Length; i++)
+        {
+            var c = value[i];
+            if (char.IsHighSurrogate(c) && i + 1 < value.Length && char.IsLowSurrogate(value[i + 1]))
+            {
+                i++; // a valid surrogate pair (e.g. an emoji)
+                continue;
+            }
+
+            if (char.IsSurrogate(c) || char.IsControl(c))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }

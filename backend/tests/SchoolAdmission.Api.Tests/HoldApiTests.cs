@@ -21,9 +21,11 @@ public sealed class HoldApiTests(ApiFixture fixture) : IClassFixture<ApiFixture>
         Assert.Equal(classId, hold.Str("classId"));
         Assert.Equal(studentId, hold.Str("studentId"));
         Assert.Equal("HELD", hold.Str("status"));
+        // Never shorter than HOLD_DURATION_SECONDS; rounded up to a whole second.
         var expiresAt = DateTimeOffset.Parse(hold.Str("expiresAt")!);
-        var expectedExpiry = fixture.Time.GetUtcNow().AddSeconds(600);
-        Assert.InRange(expiresAt, expectedExpiry.AddSeconds(-2), expectedExpiry);
+        var earliest = fixture.Time.GetUtcNow().AddSeconds(600);
+        Assert.InRange(expiresAt, earliest, earliest.AddSeconds(1));
+        Assert.EndsWith("Z", hold.Str("expiresAt"));
         Assert.Equal(1, (await Client.GetClassAsync(classId)).Int("heldSeats"));
     }
 
@@ -181,14 +183,17 @@ public sealed class HoldApiTests(ApiFixture fixture) : IClassFixture<ApiFixture>
         Assert.Equal(1, (await Client.GetClassAsync(classId)).Int("confirmedSeats"));
     }
 
-    [Fact]
-    public async Task HoldEndpoints_Return404_ForUnknownHold()
+    [Theory]
+    [InlineData("h_doesnotexist")]
+    [InlineData("h_%E2%82%AC")]
+    [InlineData("h_1%27%3B%20DROP%20TABLE%20holds")]
+    public async Task HoldEndpoints_Return404_ForUnknownOrMalformedHoldId(string holdId)
     {
         var studentId = ApiClientExtensions.NewStudentId();
 
-        Assert.Equal(HttpStatusCode.NotFound, (await Client.GetAsync("/holds/h_doesnotexist")).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await Client.ConfirmAsync("h_doesnotexist", studentId)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await Client.CancelAsync("h_doesnotexist", studentId)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Client.GetAsync($"/holds/{holdId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Client.ConfirmAsync(holdId, studentId)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Client.CancelAsync(holdId, studentId)).StatusCode);
     }
 
     [Fact]

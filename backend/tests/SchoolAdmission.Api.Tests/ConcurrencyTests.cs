@@ -64,6 +64,39 @@ public sealed class ConcurrencyTests(ApiFixture fixture) : IClassFixture<ApiFixt
     }
 
     [Fact]
+    public async Task ConfirmAndCancelRacingOnOneHold_LeaveAConsistentResult()
+    {
+        const int totalSeats = 3;
+        var classId = await fixture.Client.CreateClassAsync(totalSeats);
+        var studentId = ApiClientExtensions.NewStudentId();
+        var holdId = await fixture.Client.ApplyAndGetHoldIdAsync(classId, studentId);
+
+        var responses = await FireAtOnceAsync(20, i => i % 2 == 0
+            ? fixture.Client.ConfirmAsync(holdId, studentId)
+            : fixture.Client.CancelAsync(holdId, studentId));
+
+        Assert.All(responses, r => Assert.True(
+            r.StatusCode is HttpStatusCode.OK or HttpStatusCode.NoContent or HttpStatusCode.Conflict,
+            $"Unexpected status {(int)r.StatusCode}"));
+
+        // Whichever request won, the seat accounting must match the final status.
+        var status = (await fixture.Client.GetHoldAsync(holdId)).Str("status");
+        var seats = await fixture.Client.GetClassAsync(classId);
+        Assert.Equal(0, seats.Int("heldSeats"));
+        if (status == "CONFIRMED")
+        {
+            Assert.Equal(1, seats.Int("confirmedSeats"));
+            Assert.Equal(totalSeats - 1, seats.Int("availableSeats"));
+        }
+        else
+        {
+            Assert.Equal("CANCELLED", status);
+            Assert.Equal(0, seats.Int("confirmedSeats"));
+            Assert.Equal(totalSeats, seats.Int("availableSeats"));
+        }
+    }
+
+    [Fact]
     public async Task TwoBackendInstancesSharingOneDatabase_NeverHoldMoreSeatsThanTotalSeats()
     {
         // Bonus rule: two backend processes on different ports, one database. The second factory

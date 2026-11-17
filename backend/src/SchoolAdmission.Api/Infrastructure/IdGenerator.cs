@@ -14,6 +14,12 @@ public static class IdGenerator
 
     public static string NewHoldId() => "h_" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(12));
 
-    /// <summary>Cheap pre-check so absurd route values return 404 without touching the database.</summary>
-    public static bool IsPlausible(string? id) => !string.IsNullOrWhiteSpace(id) && id.Length <= MaxLength;
+    /// <summary>
+    /// Cheap pre-check so absurd route values (too long, NUL bytes, odd Unicode) return 404 without
+    /// touching the database. IDs only ever contain ASCII letters, digits and underscores.
+    /// </summary>
+    public static bool IsPlausible(string? id) =>
+        !string.IsNullOrEmpty(id)
+        && id.Length <= MaxLength
+        && id.All(c => char.IsAsciiLetterOrDigit(c) || c == '_');
 }

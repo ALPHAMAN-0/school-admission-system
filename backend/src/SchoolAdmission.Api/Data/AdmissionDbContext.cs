@@ -22,11 +22,9 @@ public sealed class AdmissionDbContext(DbContextOptions<AdmissionDbContext> opti
             entity.HasKey(c => c.Id).HasName("pk_classes");
             entity.Property(c => c.Id).HasColumnName("id").HasMaxLength(40);
             entity.Property(c => c.Name).HasColumnName("name").IsRequired();
-            entity.Property(c => c.NormalizedName).HasColumnName("normalized_name").IsRequired();
             entity.Property(c => c.TotalSeats).HasColumnName("total_seats");
             entity.Property(c => c.CreatedAt).HasColumnName("created_at");
 
-            entity.HasIndex(c => c.NormalizedName).IsUnique().HasDatabaseName("ux_classes_normalized_name");
             entity.HasIndex(c => c.CreatedAt).HasDatabaseName("ix_classes_created_at");
         });
 

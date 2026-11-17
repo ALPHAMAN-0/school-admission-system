@@ -52,7 +52,8 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
         policy.WithOrigins(allowedOrigins);
     }
 
-    policy.AllowAnyHeader().AllowAnyMethod();
+    // Date lets the UI align its countdown with the server clock.
+    policy.AllowAnyHeader().AllowAnyMethod().WithExposedHeaders("Date");
 }));
 
 var app = builder.Build();

@@ -51,13 +51,14 @@ public sealed class ExpiryTests(ApiFixture fixture) : IClassFixture<ApiFixture>
     }
 
     [Fact]
-    public async Task Confirm_JustBeforeExpiry_Succeeds()
+    public async Task Confirm_AtTheVeryEndOfTheHoldDuration_Succeeds()
     {
         var classId = await Client.CreateClassAsync(totalSeats: 3);
         var studentId = ApiClientExtensions.NewStudentId();
         var holdId = await Client.ApplyAndGetHoldIdAsync(classId, studentId);
 
-        fixture.Time.Advance(TimeSpan.FromSeconds(590));
+        // The full HOLD_DURATION_SECONDS is honoured, to the millisecond.
+        fixture.Time.Advance(TimeSpan.FromSeconds(600) - TimeSpan.FromMilliseconds(1));
 
         Assert.Equal(HttpStatusCode.OK, (await Client.ConfirmAsync(holdId, studentId)).StatusCode);
         fixture.Time.Advance(TimeSpan.FromHours(1));
@@ -81,7 +82,7 @@ public sealed class ExpiryTests(ApiFixture fixture) : IClassFixture<ApiFixture>
     }
 
     [Fact]
-    public async Task Cancel_Returns409_AfterHoldExpired()
+    public async Task Cancel_AfterHoldExpired_Returns204_AndKeepsStatusExpired()
     {
         var classId = await Client.CreateClassAsync(totalSeats: 2);
         var studentId = ApiClientExtensions.NewStudentId();
@@ -90,8 +91,9 @@ public sealed class ExpiryTests(ApiFixture fixture) : IClassFixture<ApiFixture>
         fixture.Time.Advance(PastHoldDuration);
         var cancel = await Client.CancelAsync(holdId, studentId);
 
-        Assert.Equal(HttpStatusCode.Conflict, cancel.StatusCode);
-        Assert.Equal("HOLD_EXPIRED", await cancel.ReadErrorCodeAsync());
+        Assert.Equal(HttpStatusCode.NoContent, cancel.StatusCode);
+        Assert.Equal("EXPIRED", (await Client.GetHoldAsync(holdId)).Str("status"));
+        Assert.Equal(2, (await Client.GetClassAsync(classId)).Int("availableSeats"));
     }
 
     [Fact]
