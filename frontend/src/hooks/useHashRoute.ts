@@ -6,10 +6,20 @@ export type Route =
   | { page: "my" }
   | { page: "application"; holdId: string };
 
+function safeDecode(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null; // a truncated or mangled link, e.g. "%E0%A4"
+  }
+}
+
+/** Never throws: an unknown or broken link falls back to the class list. */
 export function parseRoute(hash: string): Route {
   const path = hash.replace(/^#/, "") || "/";
   const application = /^\/applications\/([^/]+)$/.exec(path);
-  if (application?.[1]) return { page: "application", holdId: decodeURIComponent(application[1]) };
+  const holdId = application?.[1] ? safeDecode(application[1]) : null;
+  if (holdId) return { page: "application", holdId };
   if (path === "/admin") return { page: "admin" };
   if (path === "/my") return { page: "my" };
   return { page: "classes" };

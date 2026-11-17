@@ -1,6 +1,8 @@
 import type { ProblemDetails } from "./types";
 
 export const NETWORK_ERROR = "NETWORK_ERROR";
+/** The server answered, but not with the JSON the app expects (wrong URL, proxy page, ...). */
+export const BAD_RESPONSE = "BAD_RESPONSE";
 
 /** Any failed API call. `code` is the API's stable error code, or NETWORK_ERROR / HTTP_<status>. */
 export class ApiError extends Error {
@@ -24,6 +26,7 @@ export function isAbortError(error: unknown): boolean {
 const MESSAGES: Record<string, string> = {
   [NETWORK_ERROR]:
     "সার্ভারের সাথে যোগাযোগ করা যাচ্ছে না। ইন্টারনেট সংযোগ ও সার্ভার চালু আছে কি না দেখে একটু পরে আবার চেষ্টা করুন।",
+  [BAD_RESPONSE]: "সার্ভার থেকে অপ্রত্যাশিত উত্তর এসেছে। একটু পরে আবার চেষ্টা করুন; সমস্যা থাকলে স্কুল কর্তৃপক্ষকে জানান।",
   NO_SEATS_AVAILABLE: "দুঃখিত, এই ক্লাসে এখন কোনো খালি আসন নেই।",
   ALREADY_APPLIED: "এই শিক্ষার্থী ইতিমধ্যে এই ক্লাসে আবেদন করেছে।",
   HOLD_EXPIRED:
@@ -34,7 +37,6 @@ const MESSAGES: Record<string, string> = {
     "এই আবেদনটি অন্য একজন শিক্ষার্থীর। উপরের জন্ম নিবন্ধন নম্বরটি ঠিক আছে কি না দেখুন।",
   CLASS_NOT_FOUND: "ক্লাসটি খুঁজে পাওয়া যায়নি। তালিকাটি আবার দেখুন।",
   HOLD_NOT_FOUND: "আবেদনটি খুঁজে পাওয়া যায়নি।",
-  CLASS_NAME_TAKEN: "এই নামে একটি ক্লাস আগে থেকেই আছে। অন্য নাম দিন।",
   VALIDATION_FAILED: "দেওয়া তথ্যে ভুল আছে। লাল চিহ্নিত ঘরগুলো ঠিক করে আবার চেষ্টা করুন।",
   MISSING_STUDENT_ID: "আগে উপরের ঘরে শিক্ষার্থীর ১৭ অঙ্কের জন্ম নিবন্ধন নম্বর দিন।",
   INVALID_STUDENT_ID: "জন্ম নিবন্ধন নম্বরটি সঠিক নয়। ঠিক ১৭ অঙ্কের নম্বর দিন।",

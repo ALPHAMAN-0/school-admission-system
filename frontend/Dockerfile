@@ -15,6 +15,8 @@ CMD ["npm", "test"]
 # ---- runtime: nginx serves the static app ----
 FROM nginx:1.29-alpine AS runtime
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Default for the CSP include; replaced at start-up by 40-runtime-config.sh.
+RUN printf 'set $api_origin "http://localhost:8080";\n' > /etc/nginx/conf.d/api-origin.inc
 # Writes config.js from API_BASE_URL every time the container starts (no rebuild needed).
 COPY --chmod=0755 docker/40-runtime-config.sh /docker-entrypoint.d/40-runtime-config.sh
 COPY --from=build /app/dist /usr/share/nginx/html

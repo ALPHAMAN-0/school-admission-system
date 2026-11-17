@@ -1,11 +1,32 @@
-import { render, screen } from "@testing-library/react";
+import { render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
 import { describe, expect, it } from "vitest";
 import { App } from "./App";
 import { STUDENT_ID_STORAGE_KEY } from "./hooks/useStudentId";
 import { json, mockApi, STUDENT_ID } from "./test/mockApi";
 
+// Render as in production (main.tsx), so double-invoked effects are exercised too.
+const render = (ui: React.ReactElement) => rtlRender(<StrictMode>{ui}</StrictMode>);
+
 describe("App", () => {
+  it("ignores a tampered stored student ID instead of sending it", async () => {
+    window.localStorage.setItem(STUDENT_ID_STORAGE_KEY, "not-a-number");
+    mockApi({ "GET /classes": () => json([]) });
+    render(<App />);
+
+    expect(screen.queryByTestId("active-student-id")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/জন্ম নিবন্ধন নম্বর/)).toBeInTheDocument();
+  });
+
+  it("shows the class list for a broken link instead of a blank page", async () => {
+    window.location.hash = "#/applications/%E0%A4";
+    mockApi({ "GET /classes": () => json([]) });
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "ক্লাসের তালিকা" })).toBeInTheDocument();
+  });
+
   it("remembers the student after a reload and still shows their applications", async () => {
     mockApi({
       "GET /classes": () => json([]),

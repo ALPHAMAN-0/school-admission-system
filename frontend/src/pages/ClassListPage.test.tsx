@@ -4,6 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { json, mockApi, problem, STUDENT_ID } from "../test/mockApi";
 import { CLASS_POLL_MS, ClassListPage } from "./ClassListPage";
 
+/** The four seat-count cells of the class row, by their column label. */
+function seatCells() {
+  const row = screen.getByTestId("class-row-c_1");
+  const cell = (label: string) => row.querySelector(`td[data-label="${label}"]`)?.textContent;
+  return { total: cell("মোট আসন"), held: cell("হোল্ডে আছে"), confirmed: cell("নিশ্চিত"), available: cell("খালি") };
+}
+
 function schoolClass(available: number, total = 5) {
   return {
     id: "c_1",
@@ -31,12 +38,25 @@ describe("ClassListPage", () => {
 
     const row = await screen.findByTestId("class-row-c_1");
     expect(within(row).getByRole("rowheader")).toHaveTextContent("Class 6 - Morning Shift");
-    expect(row).toHaveTextContent("৫০০৫"); // total ৫, held ০, confirmed ০, available ৫
+    expect(seatCells()).toEqual({ total: "৫", held: "০", confirmed: "০", available: "৫" });
 
     available = 2;
     await act(() => vi.advanceTimersByTimeAsync(CLASS_POLL_MS));
 
-    expect(screen.getByTestId("class-row-c_1")).toHaveTextContent("৫৩০২");
+    expect(seatCells()).toEqual({ total: "৫", held: "৩", confirmed: "০", available: "২" });
+  });
+
+  it("keeps waiting for a slow server instead of cancelling every poll", async () => {
+    // The server takes longer than the poll interval to answer.
+    mockApi({
+      "GET /classes": () =>
+        new Promise<Response>((resolve) => setTimeout(() => resolve(json([schoolClass(4)])), CLASS_POLL_MS + 2000)),
+    });
+    render(<ClassListPage studentId={STUDENT_ID} navigate={vi.fn()} onNeedStudentId={vi.fn()} />);
+
+    await act(() => vi.advanceTimersByTimeAsync(CLASS_POLL_MS + 2500));
+
+    expect(seatCells().available).toBe("৪");
   });
 
   it("shows a friendly message instead of a blank page when the server is down", async () => {
@@ -91,7 +111,10 @@ describe("ClassListPage", () => {
     mockApi({ "GET /classes": () => json([schoolClass(0)]) });
     render(<ClassListPage studentId={STUDENT_ID} navigate={vi.fn()} onNeedStudentId={vi.fn()} />);
 
-    expect(await screen.findByRole("button", { name: /আবেদন করুন/ })).toBeDisabled();
-    expect(screen.getByText("আসন নেই")).toBeInTheDocument();
+    // The accessible name follows the visible text ("no seats"), not "apply".
+    const button = await screen.findByRole("button", { name: /আসন নেই/ });
+    expect(button).toBeDisabled();
+    expect(button).toHaveTextContent("Class 6 - Morning Shift");
+    expect(screen.queryByRole("button", { name: /আবেদন করুন/ })).not.toBeInTheDocument();
   });
 });

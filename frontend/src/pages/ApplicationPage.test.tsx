@@ -65,6 +65,43 @@ describe("ApplicationPage", () => {
     expect(server.unhandled).toEqual([]);
   });
 
+  it("sends the payment only once even if the button is double-clicked", async () => {
+    const expiresAt = new Date(Date.now() + 600_000).toISOString();
+    const server = mockApi({
+      "GET /holds/h_5": () => json(hold("h_5", "HELD", expiresAt)),
+      "POST /holds/h_5/confirm": () => json({ holdId: "h_5", status: "CONFIRMED" }),
+    });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderPage("h_5");
+
+    await user.dblClick(await screen.findByRole("button", { name: "ভর্তি ফি দিন" }));
+    await screen.findByText(/অভিনন্দন/);
+
+    expect(server.calls.filter((call) => call.method === "POST")).toHaveLength(1);
+    // The page shows CONFIRMED at once, before the next poll.
+    expect(screen.getByTestId("hold-status")).toHaveTextContent("CONFIRMED");
+  });
+
+  it("follows the server clock when the device clock is wrong", async () => {
+    // Device clock is 5 minutes slow: the server says the hold has 30 s left.
+    const serverNow = Date.now() + 5 * 60_000;
+    const expiresAt = new Date(serverNow + 30_000).toISOString();
+    mockApi({
+      "GET /holds/h_6": () =>
+        new Response(JSON.stringify(hold("h_6", "HELD", expiresAt)), {
+          status: 200,
+          headers: { "Content-Type": "application/json", Date: new Date(serverNow).toUTCString() },
+        }),
+    });
+    renderPage("h_6");
+
+    await screen.findByRole("button", { name: "ভর্তি ফি দিন" });
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+
+    // Without the server clock this would show 05:29 left.
+    expect(screen.getByTestId("countdown").textContent).toMatch(/^০০:[২৩][০-৯]$/);
+  });
+
   it("explains in plain language when the server says the time has run out", async () => {
     const expiresAt = new Date(Date.now() + 600_000).toISOString();
     mockApi({

@@ -1,13 +1,13 @@
-import { useId, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent } from "react";
 import { api } from "../api/client";
 import { ApiError, toUserMessage } from "../api/errors";
 import type { SchoolClass } from "../api/types";
 import { Alert } from "../components/Alert";
 import type { Route } from "../hooks/useHashRoute";
-import { toBengaliNumber } from "../lib/format";
+import { normalizeDigits, toBengaliNumber } from "../lib/format";
 
 const MAX_NAME_LENGTH = 100;
-const MAX_SEATS = 10_000;
+const MAX_SEATS = 2_147_483_647; // what the API can store (32-bit integer)
 
 interface FieldErrors {
   name?: string;
@@ -20,12 +20,10 @@ function validate(name: string, seats: string): FieldErrors {
   if (!trimmed) errors.name = "ক্লাসের নাম দিন, যেমন: Class 6 - Morning Shift";
   else if (trimmed.length > MAX_NAME_LENGTH) errors.name = `নাম সর্বোচ্চ ${toBengaliNumber(MAX_NAME_LENGTH)} অক্ষরের হতে পারে।`;
 
-  if (!/^\d+$/.test(seats.trim())) errors.totalSeats = "আসন সংখ্যা একটি পূর্ণ সংখ্যা হতে হবে।";
-  else {
-    const value = Number(seats);
-    if (value < 1 || value > MAX_SEATS)
-      errors.totalSeats = `আসন সংখ্যা ১ থেকে ${toBengaliNumber(MAX_SEATS)}-এর মধ্যে হতে হবে।`;
-  }
+  const digits = normalizeDigits(seats.trim());
+  if (!/^[0-9]+$/.test(digits)) errors.totalSeats = "আসন সংখ্যা একটি পূর্ণ সংখ্যা হতে হবে (যেমন ১২০)।";
+  else if (Number(digits) < 1) errors.totalSeats = "অন্তত ১টি আসন থাকতে হবে।";
+  else if (Number(digits) > MAX_SEATS) errors.totalSeats = "আসন সংখ্যা অনেক বড়।";
   return errors;
 }
 
@@ -33,12 +31,19 @@ function validate(name: string, seats: string): FieldErrors {
 export function CreateClassPage({ navigate }: { navigate: (route: Route) => void }) {
   const nameId = useId();
   const seatsId = useId();
+  const nameRef = useRef<HTMLInputElement>(null);
+  const seatsRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
   const [seats, setSeats] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<SchoolClass | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const focusFirstInvalid = (errors: FieldErrors) => {
+    if (errors.name) nameRef.current?.focus();
+    else if (errors.totalSeats) seatsRef.current?.focus();
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -47,21 +52,27 @@ export function CreateClassPage({ navigate }: { navigate: (route: Route) => void
 
     const errors = validate(name, seats);
     setFieldErrors(errors);
-    if (errors.name || errors.totalSeats) return;
+    if (errors.name || errors.totalSeats) {
+      focusFirstInvalid(errors);
+      return;
+    }
 
     setSaving(true);
     try {
-      const schoolClass = await api.createClass(name.trim(), Number(seats));
+      const schoolClass = await api.createClass(name.trim(), Number(normalizeDigits(seats.trim())));
       setCreated(schoolClass);
       setName("");
       setSeats("");
+      nameRef.current?.focus();
     } catch (caught) {
       setError(toUserMessage(caught));
       if (caught instanceof ApiError && caught.problem.errors) {
-        setFieldErrors({
+        const serverErrors: FieldErrors = {
           name: caught.problem.errors.name ? "ক্লাসের নামটি সঠিক নয়।" : undefined,
           totalSeats: caught.problem.errors.totalSeats ? "আসন সংখ্যাটি সঠিক নয়।" : undefined,
-        });
+        };
+        setFieldErrors(serverErrors);
+        focusFirstInvalid(serverErrors);
       }
     } finally {
       setSaving(false);
@@ -96,6 +107,7 @@ export function CreateClassPage({ navigate }: { navigate: (route: Route) => void
           <label htmlFor={nameId}>ক্লাসের নাম</label>
           <input
             id={nameId}
+            ref={nameRef}
             value={name}
             maxLength={MAX_NAME_LENGTH + 20}
             placeholder="Class 6 - Morning Shift"
@@ -114,6 +126,7 @@ export function CreateClassPage({ navigate }: { navigate: (route: Route) => void
           <label htmlFor={seatsId}>মোট আসন সংখ্যা</label>
           <input
             id={seatsId}
+            ref={seatsRef}
             inputMode="numeric"
             value={seats}
             placeholder="120"

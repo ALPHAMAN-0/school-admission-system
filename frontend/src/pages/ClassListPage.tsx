@@ -115,13 +115,14 @@ export function ClassListPage({ studentId, navigate, onNeedStudentId }: ClassLis
                       type="button"
                       onClick={() => void apply(schoolClass)}
                       disabled={applyingId !== null || schoolClass.availableSeats === 0}
-                      aria-label={`${schoolClass.name}: আবেদন করুন`}
                     >
                       {applyingId === schoolClass.id
                         ? "আবেদন হচ্ছে…"
                         : schoolClass.availableSeats === 0
                           ? "আসন নেই"
                           : "আবেদন করুন"}
+                      {/* The visible text stays the accessible name; the class is added for context. */}
+                      <span className="visually-hidden"> ({schoolClass.name})</span>
                     </button>
                   </td>
                 </tr>

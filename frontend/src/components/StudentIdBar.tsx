@@ -11,6 +11,7 @@ interface StudentIdBarProps {
 export function StudentIdBar({ studentId, onChange, inputRef }: StudentIdBarProps) {
   const inputId = useId();
   const hintId = useId();
+  const errorId = useId();
   const [draft, setDraft] = useState(studentId ?? "");
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(studentId === null);
@@ -60,7 +61,7 @@ export function StudentIdBar({ studentId, onChange, inputRef }: StudentIdBarProp
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
         aria-invalid={error !== null}
-        aria-describedby={hintId}
+        aria-describedby={error ? errorId : hintId}
       />
       <button type="submit">ব্যবহার করুন</button>
       {studentId && (
@@ -68,9 +69,16 @@ export function StudentIdBar({ studentId, onChange, inputRef }: StudentIdBarProp
           বাতিল
         </button>
       )}
-      <p id={hintId} className={error ? "field-error" : "hint"} role={error ? "alert" : undefined}>
-        {error ?? "আবেদন করতে ও নিজের আবেদন দেখতে এই নম্বরটি লাগবে। বাংলা অঙ্কেও লিখতে পারেন।"}
-      </p>
+      {/* Mounted fresh when it appears, so screen readers reliably announce it. */}
+      {error ? (
+        <p id={errorId} className="field-error" role="alert">
+          {error}
+        </p>
+      ) : (
+        <p id={hintId} className="hint">
+          আবেদন করতে ও নিজের আবেদন দেখতে এই নম্বরটি লাগবে। বাংলা অঙ্কেও লিখতে পারেন।
+        </p>
+      )}
     </form>
   );
 }

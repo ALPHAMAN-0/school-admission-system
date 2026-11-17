@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
+import { isValidStudentId } from "../lib/format";
 
 export const STUDENT_ID_STORAGE_KEY = "school-admission.studentId";
 
+/** Only a valid 17-digit number is trusted from storage (it may have been edited by hand). */
+function validOrNull(value: string | null): string | null {
+  return value !== null && isValidStudentId(value) ? value : null;
+}
+
 function readStored(): string | null {
   try {
-    return window.localStorage.getItem(STUDENT_ID_STORAGE_KEY);
+    return validOrNull(window.localStorage.getItem(STUDENT_ID_STORAGE_KEY));
   } catch {
     return null; // storage blocked (private mode, policy)
   }
@@ -30,7 +36,7 @@ export function useStudentId(): [string | null, (value: string | null) => void] 
   // Keep several open tabs on the same student.
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
-      if (event.key === STUDENT_ID_STORAGE_KEY) setStudentIdState(event.newValue);
+      if (event.key === STUDENT_ID_STORAGE_KEY) setStudentIdState(validOrNull(event.newValue));
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);

@@ -105,6 +105,12 @@ nav a[aria-current="page"] {
   margin: 0;
 }
 
+/* Focus is moved here programmatically on navigation; no ring needed on the container. */
+main:focus,
+.feedback:focus {
+  outline: none;
+}
+
 .page-heading {
   display: flex;
   flex-wrap: wrap;

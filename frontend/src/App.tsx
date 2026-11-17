@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { StudentIdBar } from "./components/StudentIdBar";
 import { routeToHash, useHashRoute, type Route } from "./hooks/useHashRoute";
@@ -14,18 +14,39 @@ const NAV: { route: Route; label: string }[] = [
   { route: { page: "admin" }, label: "ক্লাস তৈরি (অ্যাডমিন)" },
 ];
 
+const PAGE_TITLES: Record<Route["page"], string> = {
+  classes: "ক্লাসের তালিকা",
+  admin: "ক্লাস তৈরি",
+  my: "আমার আবেদন",
+  application: "আবেদন",
+};
+
 export function App() {
   const [route, navigate] = useHashRoute();
   const [studentId, setStudentId] = useStudentId();
   const studentInputRef = useRef<HTMLInputElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
 
   const focusStudentId = useCallback(() => {
     const input = studentInputRef.current;
-    input?.scrollIntoView({ block: "center", behavior: "smooth" });
+    input?.scrollIntoView?.({ block: "center", behavior: "smooth" });
     input?.focus();
   }, []);
 
   const pageKey = route.page === "application" ? `application:${route.holdId}` : route.page;
+
+  useEffect(() => {
+    document.title = `${PAGE_TITLES[route.page]} · স্কুল ভর্তি সিস্টেম`;
+  }, [route.page]);
+
+  // On navigation, move focus to the new page so keyboard and screen-reader users start there.
+  const previousPageKey = useRef(pageKey);
+  useEffect(() => {
+    if (previousPageKey.current !== pageKey) {
+      previousPageKey.current = pageKey;
+      mainRef.current?.focus();
+    }
+  }, [pageKey]);
 
   return (
     <div className="app">
@@ -52,7 +73,7 @@ export function App() {
         </nav>
       </header>
 
-      <main>
+      <main ref={mainRef} tabIndex={-1}>
         <ErrorBoundary key={pageKey}>
           {route.page === "classes" && (
             <ClassListPage studentId={studentId} navigate={navigate} onNeedStudentId={focusStudentId} />

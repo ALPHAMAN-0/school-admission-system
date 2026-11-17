@@ -1,5 +1,6 @@
 import { getApiBaseUrl } from "../config";
-import { ApiError, NETWORK_ERROR, isAbortError } from "./errors";
+import { recordServerDate } from "../lib/clock";
+import { ApiError, BAD_RESPONSE, NETWORK_ERROR, isAbortError } from "./errors";
 import type { Hold, ProblemDetails, SchoolClass } from "./types";
 
 interface RequestOptions {
@@ -9,7 +10,7 @@ interface RequestOptions {
   signal?: AbortSignal;
 }
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+async function request(path: string, options: RequestOptions = {}): Promise<unknown> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
   if (options.studentId) headers["X-Student-Id"] = options.studentId;
@@ -28,7 +29,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     throw new ApiError(0, NETWORK_ERROR);
   }
 
-  if (response.status === 204) return undefined as T;
+  recordServerDate(response.headers.get("Date"));
+  if (response.status === 204) return undefined;
 
   const text = await response.text();
   let data: unknown = null;
@@ -36,36 +38,62 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     try {
       data = JSON.parse(text);
     } catch {
-      data = null; // e.g. an HTML error page from a proxy
+      data = null; // e.g. an HTML page from a proxy or a wrong API_BASE_URL
     }
   }
 
   if (!response.ok) {
-    const problem = data !== null && typeof data === "object" ? (data as ProblemDetails) : {};
+    const problem = isObject(data) ? (data as ProblemDetails) : {};
     throw new ApiError(response.status, problem.code ?? `HTTP_${response.status}`, problem);
   }
 
-  return data as T;
+  if (data === null) throw new ApiError(response.status, BAD_RESPONSE);
+  return data;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Never hand the UI something it cannot render: a wrong shape becomes a friendly error. */
+function expectArray<T>(value: unknown): T[] {
+  if (!Array.isArray(value)) throw new ApiError(200, BAD_RESPONSE);
+  return value as T[];
+}
+
+function expectObjectWith<T>(value: unknown, key: string): T {
+  if (!isObject(value) || !(key in value)) throw new ApiError(200, BAD_RESPONSE);
+  return value as T;
 }
 
 const segment = (value: string) => encodeURIComponent(value);
 
 export const api = {
-  listClasses: (signal?: AbortSignal) => request<SchoolClass[]>("/classes", { signal }),
+  listClasses: async (signal?: AbortSignal) =>
+    expectArray<SchoolClass>(await request("/classes", { signal })),
 
-  createClass: (name: string, totalSeats: number) =>
-    request<SchoolClass>("/classes", { method: "POST", body: { name, totalSeats } }),
+  createClass: async (name: string, totalSeats: number) =>
+    expectObjectWith<SchoolClass>(await request("/classes", { method: "POST", body: { name, totalSeats } }), "id"),
 
-  applyForSeat: (classId: string, studentId: string) =>
-    request<Hold>(`/classes/${segment(classId)}/holds`, { method: "POST", studentId }),
+  applyForSeat: async (classId: string, studentId: string) =>
+    expectObjectWith<Hold>(
+      await request(`/classes/${segment(classId)}/holds`, { method: "POST", studentId }),
+      "holdId",
+    ),
 
-  getHold: (holdId: string, signal?: AbortSignal) => request<Hold>(`/holds/${segment(holdId)}`, { signal }),
+  getHold: async (holdId: string, signal?: AbortSignal) =>
+    expectObjectWith<Hold>(await request(`/holds/${segment(holdId)}`, { signal }), "holdId"),
 
-  confirmHold: (holdId: string, studentId: string) =>
-    request<Pick<Hold, "holdId" | "status">>(`/holds/${segment(holdId)}/confirm`, { method: "POST", studentId }),
+  confirmHold: async (holdId: string, studentId: string) =>
+    expectObjectWith<Pick<Hold, "holdId" | "status">>(
+      await request(`/holds/${segment(holdId)}/confirm`, { method: "POST", studentId }),
+      "status",
+    ),
 
-  cancelHold: (holdId: string, studentId: string) =>
-    request<void>(`/holds/${segment(holdId)}`, { method: "DELETE", studentId }),
+  cancelHold: async (holdId: string, studentId: string): Promise<void> => {
+    await request(`/holds/${segment(holdId)}`, { method: "DELETE", studentId });
+  },
 
-  myHolds: (studentId: string, signal?: AbortSignal) => request<Hold[]>("/me/holds", { studentId, signal }),
+  myHolds: async (studentId: string, signal?: AbortSignal) =>
+    expectArray<Hold>(await request("/me/holds", { studentId, signal })),
 };

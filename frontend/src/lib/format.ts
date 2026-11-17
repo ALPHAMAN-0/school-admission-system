@@ -8,11 +8,14 @@ export function toBengaliNumber(value: number): string {
   return bnNumber.format(value);
 }
 
+/** Bengali digits to ASCII: "১২০" -> "120". */
+export function normalizeDigits(raw: string): string {
+  return raw.replace(/[০-৯]/g, (digit) => String(BENGALI_DIGITS.indexOf(digit)));
+}
+
 /** Accepts Bengali digits too, drops spaces and dashes: "২০১৫ ২৬৯..." -> "2015269..." */
 export function normalizeStudentId(raw: string): string {
-  return raw
-    .replace(/[০-৯]/g, (digit) => String(BENGALI_DIGITS.indexOf(digit)))
-    .replace(/[\s-]/g, "");
+  return normalizeDigits(raw).replace(/[\s-]/g, "");
 }
 
 export function isValidStudentId(value: string): boolean {

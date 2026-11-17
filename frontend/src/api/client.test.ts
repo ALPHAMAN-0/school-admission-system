@@ -37,6 +37,18 @@ describe("api client", () => {
     expect(toUserMessage(error)).toMatch(/সার্ভারে একটি সমস্যা হয়েছে/);
   });
 
+  it("treats a 200 that is not the expected JSON (e.g. a wrong API_BASE_URL) as an error, not empty data", async () => {
+    mockApi({ "GET /classes": () => new Response("<!doctype html><html></html>", { status: 200 }) });
+    const htmlError = await api.listClasses().catch((caught: unknown) => caught);
+
+    mockApi({ "GET /me/holds": () => json({ unexpected: true }) });
+    const shapeError = await api.myHolds(STUDENT_ID).catch((caught: unknown) => caught);
+
+    expect((htmlError as ApiError).code).toBe("BAD_RESPONSE");
+    expect((shapeError as ApiError).code).toBe("BAD_RESPONSE");
+    expect(toUserMessage(htmlError)).toMatch(/অপ্রত্যাশিত উত্তর/);
+  });
+
   it("sends the student ID header and uses the runtime API URL", async () => {
     window.__APP_CONFIG__ = { apiBaseUrl: "http://api.example.test:9000/" };
     const server = mockApi({ "DELETE /holds/h_1": () => new Response(null, { status: 204 }) });
